@@ -1,5 +1,4 @@
 # Face Recognition Based Attendance System Using Deep Learning and IoT
-
 ## Table of Contents
 - [Introduction](#introduction)
 - [Features](#features)

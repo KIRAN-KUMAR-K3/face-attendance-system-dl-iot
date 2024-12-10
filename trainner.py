@@ -1,54 +1,71 @@
 import os
-import cv2
 import numpy as np
-from PIL import Image
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.preprocessing.image import img_to_array, load_img
+from tensorflow.keras.utils import to_categorical
+from sklearn.model_selection import train_test_split
 
-def train():
-    # Create the LBPH face recognizer
-    recognizer = cv2.face.LBPHFaceRecognizer_create()
-    # Load the face detector
-    detector = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
-    path = 'dataSet'
+# Set image dimensions
+image_size = (224, 224)
 
-    def getImagesWithID(path):
-        # Get a list of image paths in the dataset folder
-        imagePaths = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(('.jpg', '.png'))]
+# Load dataset (example: 'dataset' folder with subfolders for each person)
+def load_images_from_folder(folder):
+    images = []
+    labels = []
+    label = 0
+    for person_name in os.listdir(folder):
+        person_folder = os.path.join(folder, person_name)
+        if os.path.isdir(person_folder):
+            for image_name in os.listdir(person_folder):
+                image_path = os.path.join(person_folder, image_name)
+                image = load_img(image_path, target_size=image_size)
+                image = img_to_array(image)
+                image = image / 255.0  # Normalize image
+                images.append(image)
+                labels.append(label)
+            label += 1
+    return np.array(images), np.array(labels)
 
-        faces = []
-        IDs = []
-        
-        for imagePath in imagePaths:
-            # Open and convert image to grayscale
-            faceImg = Image.open(imagePath).convert('L')
-            faceNp = np.array(faceImg, 'uint8')
-            # Extract ID from the filename
-            try:
-                ID = int(os.path.split(imagePath)[-1].split('.')[1])  # e.g., "user.1.jpg" -> ID = 1
-            except ValueError:
-                print(f"Skipping image {imagePath} due to invalid ID format.")
-                continue
-            
-            faces.append(faceNp)
-            IDs.append(ID)
-            print(f"Training on image: {imagePath}, ID: {ID}")  # Print processed image and ID
-            cv2.imshow("training", faceNp)
-            cv2.waitKey(10)
+# Path to your dataset (folder structure: 'dataset/person_name/image.jpg')
+dataset_path = 'dataset'  # Adjust the path to your dataset
 
-        return np.array(IDs), faces
+# Load and preprocess images and labels
+images, labels = load_images_from_folder(dataset_path)
+labels = to_categorical(labels)  # One-hot encode labels
 
-    # Get images and IDs
-    Ids, faces = getImagesWithID(path)
-    
-    if len(Ids) == 0:
-        print("No valid images found for training.")
-        return
+# Split dataset into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(images, labels, test_size=0.2, random_state=42)
 
-    # Train the recognizer
-    recognizer.train(faces, Ids)
-    # Save the trained data
-    recognizer.save('recognizer/trainingData.yml')
-    print("Training complete and data saved to 'recognizer/trainingData.yml'.")
-    cv2.destroyAllWindows()
+# Define the CNN model
+model = Sequential()
 
-train()
+# Add Convolutional and MaxPooling layers
+model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(224, 224, 3)))
+model.add(MaxPooling2D(pool_size=(2, 2)))
 
+model.add(Conv2D(64, (3, 3), activation='relu'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+
+model.add(Conv2D(128, (3, 3), activation='relu'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+
+# Flatten the output and add fully connected layers
+model.add(Flatten())
+model.add(Dense(128, activation='relu'))
+model.add(Dropout(0.5))
+model.add(Dense(len(os.listdir(dataset_path)), activation='softmax'))  # Number of classes = number of people
+
+# Compile the model
+model.compile(optimizer=Adam(learning_rate=0.0001), loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Summarize the model architecture
+model.summary()
+
+# Train the model
+model.fit(X_train, y_train, epochs=10, batch_size=32, validation_data=(X_test, y_test))
+
+# Save the trained model as .h5
+model.save('face_recognition_model.h5')
+print("Model saved as 'face_recognition_model.h5'")
